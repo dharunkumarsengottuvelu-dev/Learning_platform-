@@ -76,15 +76,15 @@ export async function proxy(request: NextRequest) {
 
   // ── 7. Role-based route enforcement ──────────────────────────────────────
   const requestedSection = pathname.split('/')[1]; // e.g. "admin"
-  const adminRoles: UserRole[] = ['super_admin', 'admin'];
+  const adminRoles: UserRole[] = ['admin'];
 
   if (requestedSection === 'admin' && !adminRoles.includes(userRole as UserRole)) {
     return NextResponse.redirect(new URL('/403', request.url));
   }
-  if (requestedSection === 'manager' && userRole !== 'manager' && !adminRoles.includes(userRole as UserRole)) {
+  if (requestedSection === 'employee' && userRole !== 'employee' && !adminRoles.includes(userRole as UserRole)) {
     return NextResponse.redirect(new URL('/403', request.url));
   }
-  if (requestedSection === 'trainer' && userRole !== 'trainer' && !adminRoles.includes(userRole as UserRole)) {
+  if (requestedSection === 'instructor' && userRole !== 'instructor' && !adminRoles.includes(userRole as UserRole)) {
     return NextResponse.redirect(new URL('/403', request.url));
   }
   if (requestedSection === 'student' && userRole !== 'student' && !adminRoles.includes(userRole as UserRole)) {
