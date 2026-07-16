@@ -2,13 +2,13 @@ import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { LayoutDashboard, Users, FileCheck, CalendarDays, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, FileCheck, Settings, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LogoutButton } from '@/components/ui/LogoutButton';
 import { getInitials } from '@/lib/utils';
 
-export default async function TrainerLayout({ children }: { children: ReactNode }) {
+export default async function InstructorLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
 
@@ -28,16 +28,16 @@ export default async function TrainerLayout({ children }: { children: ReactNode 
     redirect('/onboarding');
   }
 
-  if (profile.role !== 'trainer') {
+  if (profile.role !== 'instructor') {
     redirect('/403');
   }
 
   const navItems = [
-    { label: 'Dashboard', href: '/trainer/dashboard', icon: LayoutDashboard },
-    { label: 'My Batches', href: '/trainer/batches', icon: Users },
-    { label: 'Submissions inbox', href: '/trainer/submissions', icon: FileCheck },
-    { label: 'Schedule', href: '/trainer/schedule', icon: CalendarDays },
-    { label: 'Settings', href: '/trainer/settings', icon: Settings },
+    { label: 'Dashboard', href: '/instructor/dashboard', icon: LayoutDashboard },
+    { label: 'My Batches', href: '/instructor/batches', icon: Users },
+    { label: 'Submissions inbox', href: '/instructor/submissions', icon: FileCheck },
+    { label: 'Schedule', href: '/instructor/schedule', icon: CalendarDays },
+    { label: 'Settings', href: '/instructor/settings', icon: Settings },
   ];
 
   return (
@@ -53,7 +53,7 @@ export default async function TrainerLayout({ children }: { children: ReactNode 
           </div>
           <div>
             <h1 style={{ fontSize: '1.125rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 }}>LMS</h1>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>Trainer Portal</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>Instructor Portal</span>
           </div>
         </div>
 

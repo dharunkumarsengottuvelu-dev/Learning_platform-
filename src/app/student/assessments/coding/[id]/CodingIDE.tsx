@@ -54,7 +54,7 @@ export function CodingIDE({ question, testCases }: Props) {
       else setIsRunning(true);
       setResults(null);
 
-      // Only run against non-hidden test cases if it's just "Run Code"
+      // We still determine casesToRun so we can zip them with the results later
       const casesToRun = submit ? testCases : testCases.filter(t => !t.is_hidden);
 
       if (casesToRun.length === 0) {
@@ -62,45 +62,76 @@ export function CodingIDE({ question, testCases }: Props) {
         return;
       }
 
+      // Step 1: Submit to backend
       const response = await fetch('/api/compiler', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          question_id: question.id,
           source_code: code,
-          language_id: language.id,
-          test_cases: casesToRun.map(tc => tc.input)
+          language: language.name.toLowerCase(),
+          is_submit: submit
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to communicate with compiler service');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to communicate with compiler service');
       }
 
       const data = await response.json();
+      const submissionId = data.submissionId;
+      const judge0Token = data.judge0Token;
       
-      // Merge results with expected outputs for display
-      const mergedResults = casesToRun.map((tc, index) => {
-        const res = data[index] || {};
+      if (!submissionId) {
+        throw new Error('No submission ID returned');
+      }
+
+      // Step 2: Poll for results
+      let currentStatus = data.status;
+      let finalResults = null;
+      let attempts = 0;
+      
+      while (['pending', 'running'].includes(currentStatus) && attempts < 30) {
+        await new Promise(r => setTimeout(r, 1000));
+        attempts++;
         
-        // Decode base64 outputs from Judge0
+        const pollRes = await fetch(`/api/compiler?submissionId=${submissionId}${judge0Token ? `&tokens=${judge0Token}` : ''}`);
+        if (pollRes.ok) {
+          const pollData = await pollRes.json();
+          currentStatus = pollData.status;
+          
+          if (!['pending', 'running'].includes(currentStatus)) {
+            finalResults = pollData.test_case_results;
+            break;
+          }
+        }
+      }
+
+      if (!finalResults) {
+        throw new Error('Timeout waiting for compiler results');
+      }
+      
+      // Step 3: Merge results with expected outputs for display
+      const mergedResults = casesToRun.map((tc, index) => {
+        const res = finalResults[index] || {};
+        
+        // Outputs are already decoded strings in our new backend, or we decode if needed
         const stdout = res.stdout ? atob(res.stdout).trim() : null;
         const stderr = res.stderr ? atob(res.stderr).trim() : null;
         const compile_output = res.compile_output ? atob(res.compile_output).trim() : null;
         const expected = tc.expected_output.trim();
 
-        // Very basic pass/fail logic
-        const passed = stdout === expected;
-
         return {
           ...tc,
-          status_id: res.status?.id,
-          status_description: res.status?.description,
+          status_id: res.status_id,
+          status_description: res.status_description,
           stdout,
           stderr,
           compile_output,
-          time: res.time,
-          memory: res.memory,
-          passed,
+          time: (res.time_ms / 1000).toFixed(3),
+          memory: res.memory_mb * 1000,
+          passed: res.passed,
           error: stderr || compile_output
         };
       });

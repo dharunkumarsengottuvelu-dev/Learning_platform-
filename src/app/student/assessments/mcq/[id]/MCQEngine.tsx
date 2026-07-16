@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { submitMCQAssessment } from '../../actions';
 import { Clock, ChevronLeft, ChevronRight, CheckCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ export function MCQEngine({ test, questions }: Props) {
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [timeLeft, setTimeLeft] = useState<number | null>(test.duration_minutes ? test.duration_minutes * 60 : null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [isStarted, setIsStarted] = useState(false);
 
   useEffect(() => {
@@ -63,14 +65,24 @@ export function MCQEngine({ test, questions }: Props) {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    // In a real implementation, you would call a Server Action here:
-    // await submitTestAnswersAction(test.id, answers);
     
-    // Simulate network
-    await new Promise(r => setTimeout(r, 1500));
+    // Convert all answers to string[] to match the action signature
+    const formattedAnswers: Record<string, string[]> = {};
+    for (const [qId, ans] of Object.entries(answers)) {
+      formattedAnswers[qId] = Array.isArray(ans) ? ans : [ans];
+    }
     
-    toast.success('Test submitted successfully!');
-    router.push('/student/assessments');
+    startTransition(async () => {
+      const result = await submitMCQAssessment(test.id, formattedAnswers);
+      
+      if (result.success) {
+        toast.success(`Test submitted! You scored ${result.percentage?.toFixed(2)}%`);
+        router.push('/student/assessments');
+      } else {
+        toast.error(result.error || 'Failed to submit test');
+        setIsSubmitting(false);
+      }
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -174,8 +186,8 @@ export function MCQEngine({ test, questions }: Props) {
               </button>
               
               {currentIdx === questions.length - 1 ? (
-                <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
-                  {isSubmitting ? <><Loader2 size={16} className="animate-spin" /> Submitting...</> : <><CheckCircle size={16} /> Submit Test</>}
+                <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting || isPending}>
+                  {(isSubmitting || isPending) ? <><Loader2 size={16} className="animate-spin" /> Submitting...</> : <><CheckCircle size={16} /> Submit Test</>}
                 </button>
               ) : (
                 <button className="btn btn-primary" onClick={() => setCurrentIdx(i => Math.min(questions.length - 1, i + 1))}>
@@ -216,7 +228,7 @@ export function MCQEngine({ test, questions }: Props) {
           </div>
           
           <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
-            <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }} onClick={handleSubmit} disabled={isSubmitting}>
+            <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }} onClick={handleSubmit} disabled={isSubmitting || isPending}>
               Finish Attempt
             </button>
           </div>

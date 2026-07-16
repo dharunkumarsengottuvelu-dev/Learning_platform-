@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { question_id, language, source_code, test_attempt_id } = parsed.data;
+  const { question_id, language, source_code, test_attempt_id, is_submit } = parsed.data;
 
   const judge0Url = process.env.JUDGE0_API_URL;
   const judge0Key = process.env.JUDGE0_API_KEY;
@@ -41,11 +41,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Fetch test cases to run
-  const { data: testCases } = await supabase
+  let query = supabase
     .from('coding_test_cases')
-    .select('input, expected_output, is_sample, order_index')
+    .select('input, expected_output, is_hidden, order_index')
     .eq('question_id', question_id)
     .order('order_index');
+    
+  if (!is_submit) {
+    query = query.eq('is_hidden', false);
+  }
+  
+  const { data: testCases } = await query;
 
   // Fetch question limits
   const { data: question } = await supabase
@@ -101,11 +107,10 @@ export async function POST(request: NextRequest) {
     .insert({
       question_id,
       student_id: user.id,
-      test_attempt_id: test_attempt_id ?? null,
+      test_id: test_attempt_id ?? null, // In new schema this maps to test_id or we can leave it null if practice
       language,
       source_code,
-      status: judge0Status as 'pending' | 'running',
-      judge0_token: judge0Token,
+      verdict: judge0Status as 'pending' | 'running',
     })
     .select('id')
     .single();
@@ -128,6 +133,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const submissionId = searchParams.get('submissionId');
+  const tokensParam = searchParams.get('tokens');
 
   if (!submissionId) {
     return NextResponse.json({ error: 'submissionId required' }, { status: 400 });
@@ -139,7 +145,7 @@ export async function GET(request: NextRequest) {
 
   const { data: submission } = await supabase
     .from('coding_submissions')
-    .select('id, judge0_token, status, student_id')
+    .select('id, verdict, student_id')
     .eq('id', submissionId)
     .single();
 
@@ -148,15 +154,15 @@ export async function GET(request: NextRequest) {
   }
 
   // If already finalized, return cached result
-  if (['accepted', 'wrong_answer', 'time_limit', 'runtime_error', 'compile_error'].includes(submission.status)) {
-    return NextResponse.json({ status: submission.status });
+  if (['accepted', 'wrong_answer', 'time_limit', 'runtime_error', 'compile_error'].includes(submission.verdict)) {
+    return NextResponse.json({ status: submission.verdict });
   }
 
   const judge0Url = process.env.JUDGE0_API_URL;
   const judge0Key = process.env.JUDGE0_API_KEY;
 
-  if (!judge0Url || !submission.judge0_token) {
-    return NextResponse.json({ status: submission.status });
+  if (!judge0Url || !tokensParam) {
+    return NextResponse.json({ status: submission.verdict });
   }
 
   try {
@@ -166,14 +172,14 @@ export async function GET(request: NextRequest) {
       headers['X-RapidAPI-Host'] = 'judge0-ce.p.rapidapi.com';
     }
 
-    const tokens = submission.judge0_token;
+    const tokens = tokensParam;
     const pollRes = await fetch(
       `${judge0Url}/submissions/batch?tokens=${tokens}&base64_encoded=true&fields=status,time,memory`,
       { headers }
     );
 
     if (pollRes.ok) {
-      const pollData = await pollRes.json() as { submissions: Array<{ status: { id: number; description: string }; time?: string; memory?: number }> };
+      const pollData = await pollRes.json() as { submissions: Array<{ status: { id: number; description: string }; time?: string; memory?: number; stdout?: string; stderr?: string; compile_output?: string }> };
       const results = pollData.submissions;
 
       // Map Judge0 status IDs to our status
@@ -188,27 +194,44 @@ export async function GET(request: NextRequest) {
         const avgTime = results.reduce((s, r) => s + parseFloat(r.time ?? '0'), 0) / results.length * 1000;
         const maxMemory = Math.max(...results.map((r) => (r.memory ?? 0) / 1000));
 
-        await supabase
+        const { error: updateError, data: updateRes } = await supabase
           .from('coding_submissions')
           .update({
-            status: finalStatus,
+            verdict: finalStatus,
             execution_time_ms: Math.round(avgTime),
             memory_used_mb: Math.round(maxMemory * 100) / 100,
             score: allAccepted ? 100 : 0,
-            test_case_results: results.map((r) => ({
-              passed: r.status.id === 3,
-              time_ms: Math.round(parseFloat(r.time ?? '0') * 1000),
-              memory_mb: Math.round((r.memory ?? 0) / 1000),
-            })),
+            test_cases_passed: results.filter(r => r.status.id === 3).length,
+            test_cases_total: results.length
           })
-          .eq('id', submissionId);
+          .eq('id', submissionId)
+          .select('id')
+          .single();
 
-        return NextResponse.json({ status: finalStatus });
+        if (updateError) {
+           console.error("Failed to update submission:", updateError);
+        }
+
+        // We can't save individual test case results in the DB easily without the jsonb column,
+        // so we return them directly to the client for this session.
+        const test_case_results = results.map((r) => ({
+          passed: r.status.id === 3,
+          time_ms: Math.round(parseFloat(r.time ?? '0') * 1000),
+          memory_mb: Math.round((r.memory ?? 0) / 1000),
+          stdout: r.stdout,
+          stderr: r.stderr,
+          compile_output: r.compile_output,
+          status_id: r.status.id,
+          status_description: r.status.description,
+        }));
+
+        return NextResponse.json({ status: finalStatus, test_case_results });
       }
     }
-  } catch {
+  } catch (e) {
     // Judge0 poll failed — return current DB status
+    console.error(e);
   }
 
-  return NextResponse.json({ status: submission.status });
+  return NextResponse.json({ status: submission.verdict });
 }

@@ -1,6 +1,6 @@
 // ─── Role & User Types ────────────────────────────────────────────────────────
 
-export type UserRole = 'super_admin' | 'admin' | 'manager' | 'trainer' | 'student';
+export type UserRole = 'admin' | 'employee' | 'instructor' | 'student';
 
 export interface UserProfile {
   id: string;

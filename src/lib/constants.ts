@@ -2,19 +2,17 @@ import type { UserRole } from '@/types';
 
 /** Route protection map: which roles can access which path prefixes */
 export const ROLE_ROUTES: Record<UserRole, string> = {
-  super_admin: '/admin',
   admin: '/admin',
-  manager: '/manager',
-  trainer: '/trainer',
+  employee: '/employee',
+  instructor: '/instructor',
   student: '/student',
 };
 
 /** Default redirect after login per role */
 export const ROLE_DEFAULT_REDIRECT: Record<UserRole, string> = {
-  super_admin: '/admin/dashboard',
   admin: '/admin/dashboard',
-  manager: '/manager/dashboard',
-  trainer: '/trainer/dashboard',
+  employee: '/employee/dashboard',
+  instructor: '/instructor/dashboard',
   student: '/student/dashboard',
 };
 

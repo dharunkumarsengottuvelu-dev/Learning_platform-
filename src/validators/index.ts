@@ -78,6 +78,7 @@ export const codingSubmissionSchema = z.object({
   language: z.enum(['python', 'java', 'c', 'cpp', 'javascript', 'typescript', 'sql']),
   source_code: z.string().min(1).max(65535),
   test_attempt_id: z.string().uuid().optional(),
+  is_submit: z.boolean().optional(),
 });
 
 // ─── Assignment ───────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ export const assignmentSchema = z.object({
 export const createUserSchema = z.object({
   full_name: z.string().min(2).max(200),
   email: z.string().email(),
-  role: z.enum(['admin', 'manager', 'trainer', 'student']).default('student'),
+  role: z.enum(['admin', 'employee', 'instructor', 'student']).default('student'),
   department_id: z.string().uuid().optional(),
   designation: z.string().max(200).optional(),
   phone: z.string().max(20).optional(),
